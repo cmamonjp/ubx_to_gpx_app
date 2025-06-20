@@ -47,20 +47,29 @@ uploaded_file = st.file_uploader("🔼 UBXファイルをアップロード", ty
 
 if uploaded_file:
     ubx_bytes = uploaded_file.read()
-    try:
-        gpx_text, point_count = ubx_to_gpx(ubx_bytes)
-        st.success(f"✅ 変換成功！トラックポイント数: {point_count}")
 
-        gpx_io = io.BytesIO()
-        gpx_io.write(gpx_text.encode("utf-8"))
-        gpx_io.seek(0)
+        try:
+        gpx_text, point_count, msg_counter = ubx_to_gpx_with_metadata(ubx_bytes)
 
-        st.download_button(
-            label="⬇️ GPXファイルをダウンロード",
-            data=gpx_io,
-            file_name="converted.gpx",
-            mime="application/gpx+xml"
-        )
+        st.subheader("📊 UBXメッセージ種別一覧")
+        for msg_type, count in msg_counter.items():
+            st.write(f"- {msg_type}: {count}")
+
+        if point_count == 0:
+            st.error("⚠️ NAV-PVT位置情報が含まれていません。上のメッセージ一覧にNAV-PVTがあるか確認してください。")
+        else:
+            st.success(f"✅ 変換成功！トラックポイント数: {point_count}")
+
+            gpx_io = io.BytesIO()
+            gpx_io.write(gpx_text.encode("utf-8"))
+            gpx_io.seek(0)
+
+            st.download_button(
+                label="⬇️ GPXファイルをダウンロード",
+                data=gpx_io,
+                file_name="converted.gpx",
+                mime="application/gpx+xml"
+            )
 
     except ValueError as ve:
         st.error(f"⚠️ 変換失敗: {ve}")
