@@ -3,8 +3,9 @@ from pyubx2 import UBXReader
 import gpxpy
 import gpxpy.gpx
 import io
+from collections import Counter
 
-def ubx_to_gpx(ubx_data: bytes):
+def ubx_to_gpx_with_metadata(ubx_data: bytes):
     stream = io.BytesIO(ubx_data)
     ubr = UBXReader(stream, protfilter=2)  # UBX only
     gpx = gpxpy.gpx.GPX()
@@ -14,14 +15,17 @@ def ubx_to_gpx(ubx_data: bytes):
     gpx_track.segments.append(gpx_segment)
 
     point_count = 0
+    msg_counter = Counter()
+
     try:
         for (_, parsed_data) in ubr:
+            msg_counter[parsed_data.identity] += 1
             if parsed_data.identity == "NAV-PVT":
                 try:
                     lat = parsed_data.lat * 1e-7
                     lon = parsed_data.lon * 1e-7
                     if lat == 0.0 and lon == 0.0:
-                        continue  # 無効な座標はスキップ
+                        continue
                     ele = parsed_data.height / 1000.0
                     time = parsed_data.dt
                     gpx_segment.points.append(
@@ -36,7 +40,7 @@ def ubx_to_gpx(ubx_data: bytes):
     if point_count == 0:
         raise ValueError("UBXファイルに有効なNAV-PVT位置情報が含まれていません。")
 
-    return gpx.to_xml(), point_count
+    return gpx.to_xml(), point_count, msg_counter
 
 # --- Streamlit UI ---
 st.set_page_config(page_title="UBX→GPX変換ツール", layout="centered")
@@ -48,30 +52,28 @@ uploaded_file = st.file_uploader("🔼 UBXファイルをアップロード", ty
 if uploaded_file:
     ubx_bytes = uploaded_file.read()
 
-        try:
+    try:
         gpx_text, point_count, msg_counter = ubx_to_gpx_with_metadata(ubx_bytes)
 
         st.subheader("📊 UBXメッセージ種別一覧")
         for msg_type, count in msg_counter.items():
             st.write(f"- {msg_type}: {count}")
 
-        if point_count == 0:
-            st.error("⚠️ NAV-PVT位置情報が含まれていません。上のメッセージ一覧にNAV-PVTがあるか確認してください。")
-        else:
-            st.success(f"✅ 変換成功！トラックポイント数: {point_count}")
+        st.success(f"✅ 変換成功！トラックポイント数: {point_count}")
 
-            gpx_io = io.BytesIO()
-            gpx_io.write(gpx_text.encode("utf-8"))
-            gpx_io.seek(0)
+        gpx_io = io.BytesIO()
+        gpx_io.write(gpx_text.encode("utf-8"))
+        gpx_io.seek(0)
 
-            st.download_button(
-                label="⬇️ GPXファイルをダウンロード",
-                data=gpx_io,
-                file_name="converted.gpx",
-                mime="application/gpx+xml"
-            )
+        st.download_button(
+            label="⬇️ GPXファイルをダウンロード",
+            data=gpx_io,
+            file_name="converted.gpx",
+            mime="application/gpx+xml"
+        )
 
     except ValueError as ve:
         st.error(f"⚠️ 変換失敗: {ve}")
     except Exception as e:
         st.error(f"❌ 予期せぬエラーが発生しました: {e}")
+
